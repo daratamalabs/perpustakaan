@@ -39,17 +39,47 @@ Data tiap sekolah (buku, aset, member, kunjungan, petugas, pengaturan) terpisah 
 
 Paket Hostinger shared hosting yang sama dengan Daratama POS sudah memenuhi semuanya. Installer akan menampilkan hasil pemeriksaan server sebelum memasang.
 
-## Cara pasang di Hostinger
+## Cara pasang di Hostinger (deploy.sh)
 
-1. **Buat subdomain.** hPanel → *Domains* → *Subdomains* → buat `perpustakaan` untuk `daratamalabs.com`. Catat folder yang dibuat (biasanya `public_html/perpustakaan`).
-2. **Aktifkan SSL** untuk `perpustakaan.daratamalabs.com` (hPanel → *Security* → *SSL*). Tunggu sampai aktif.
-3. **Buat database.** hPanel → *Databases* → *MySQL Databases*: buat database dan user baru, lalu catat nama database, user, dan password-nya.
-4. **Unggah aplikasi.** Buka *File Manager*, masuk ke folder subdomain, unggah `perpustakaan.zip`, lalu *Extract* di folder itu. Pastikan `index.php`, `.htaccess`, `app/`, `assets/`, dan `storage/` berada langsung di folder subdomain (bukan di dalam subfolder lagi).
-5. **Jalankan installer.** Buka `https://perpustakaan.daratamalabs.com/install`, isi data database dan buat akun super admin. Installer membuat tabel dan `config.php` secara otomatis, lalu terkunci.
-6. **Tambah sekolah.** Masuk `https://perpustakaan.daratamalabs.com/superadmin` → *Tambah sekolah*: isi nama (SMA Negeri 3 Pemalang), alamat `sman3pemalang`, dan akun kepala perpustakaan.
-7. **Siapkan sekolah.** Kepala perpustakaan masuk ke `/sman3pemalang/admin`, lalu buka *Pengaturan* untuk melengkapi profil, jam buka, aturan pinjam, token WhatsApp, dan akun petugas.
+Kode disimpan di GitHub (`daratamalabs/perpustakaan`). Server Hostinger mengambil kode langsung dari GitHub lewat SSH, jadi setiap pembaruan cukup dengan `./deploy.sh`.
 
-Untuk sekolah berikutnya cukup ulangi langkah 6 dengan alamat lain, misalnya `sman1pemalang`.
+### Persiapan di hPanel (sekali)
+
+1. **Subdomain** `perpustakaan.daratamalabs.com`. Catat foldernya, biasanya `public_html/perpustakaan`, atau lengkapnya `domains/daratamalabs.com/public_html/perpustakaan`.
+2. **SSL** untuk subdomain itu (*Security → SSL*). HTTPS wajib agar kamera bisa dipakai untuk scan QR.
+3. **Database** (*Databases → MySQL Databases*): buat database dan user baru, lalu catat nama database, user, dan password-nya.
+4. **SSH Access** (*Advanced → SSH Access*): aktifkan, lalu catat IP, port (biasanya `65002`), dan username (`u123456789`). Agar tidak diminta password setiap deploy, tambahkan kunci SSH publik Mac (`~/.ssh/id_ed25519.pub`) di bagian *SSH Keys*.
+
+### Pemasangan pertama
+
+```bash
+git clone git@github.com:daratamalabs/perpustakaan.git
+cd perpustakaan
+./deploy.sh setup
+```
+
+`setup` akan:
+1. Menanyakan data SSH, lalu menyimpannya di `.deploy.env` (tidak ikut ke GitHub).
+2. Membuat kunci deploy khusus di server dan menampilkannya. Tambahkan kunci itu di GitHub: repo → *Settings → Deploy keys → Add deploy key*. Jangan centang *Allow write access*.
+3. Mengambil kode ke folder subdomain. Halaman bawaan Hostinger (`default.php`) ikut dihapus.
+
+Lanjutkan di browser:
+
+4. **Installer**: buka `https://perpustakaan.daratamalabs.com/install`, isi data database dan buat akun super admin. Installer membuat tabel dan `config.php`, lalu terkunci.
+5. **Tambah sekolah**: masuk ke `https://perpustakaan.daratamalabs.com/superadmin`, pilih *Tambah sekolah*, lalu isi nama (SMA Negeri 3 Pemalang), alamat `sman3pemalang`, dan akun kepala perpustakaan.
+6. **Siapkan sekolah**: kepala perpustakaan masuk ke `/sman3pemalang/admin`, lalu lengkapi *Pengaturan* (profil, jam buka, aturan pinjam, token WhatsApp, petugas).
+
+Untuk sekolah berikutnya cukup ulangi langkah 5 dengan alamat lain, misalnya `sman1pemalang`.
+
+### Pembaruan
+
+```bash
+./deploy.sh          # commit perubahan (jika ada), push ke GitHub, lalu perbarui server
+./deploy.sh status   # versi yang sedang berjalan di server
+./deploy.sh ssh      # buka terminal server di folder aplikasi
+```
+
+Saat deploy, server mengikuti isi GitHub persis. `config.php` dan isi `storage/` (sesi, foto unggahan) tidak pernah tersentuh karena tidak ikut di repo. Jangan mengedit kode langsung di server, karena perubahannya akan tertimpa pada deploy berikutnya.
 
 > Jika installer tidak bisa menulis `config.php`, ia akan menampilkan isi berkasnya. Buat `config.php` secara manual di folder aplikasi dengan isi tersebut. Contoh format ada di `config.sample.php`.
 
@@ -83,14 +113,11 @@ WhatsApp dipakai untuk kode verifikasi pendaftaran, kartu member setelah disetuj
 - Hanya kepala perpustakaan yang bisa memulihkan cadangan, dan hanya ke sekolah yang sama.
 - Foto (sampul buku, foto member, foto aset) tersimpan di `storage/uploads`. Ikut cadangkan folder ini lewat fitur backup Hostinger.
 
-## Pembaruan aplikasi
-
-Unggah berkas versi baru dan timpa berkas lama, **kecuali** `config.php` dan folder `storage/`. Keduanya berisi pengaturan dan data unggahan yang harus tetap ada.
-
 ## Struktur folder
 
 ```
 index.php          Front controller (semua permintaan masuk lewat sini)
+deploy.sh          Deploy ke Hostinger lewat SSH + git
 .htaccess          Aturan URL & proteksi folder
 config.sample.php  Contoh konfigurasi (config.php dibuat installer)
 app/               Kode aplikasi (tidak bisa diakses dari browser)

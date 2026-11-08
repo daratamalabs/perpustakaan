@@ -1,5 +1,8 @@
 # Perpustakaan Digital Sekolah - Daratama Labs
 Options -Indexes
+
+# Folder .git tidak boleh terbaca walau mod_rewrite mati
+RedirectMatch 404 /\.git
 DirectoryIndex index.php
 
 <IfModule mod_rewrite.c>
@@ -7,7 +10,7 @@ DirectoryIndex index.php
 
   # Folder internal tidak boleh diakses langsung
   RewriteRule ^(app|storage)(/|$) - [F,L]
-  RewriteRule ^(config\.php|config\.sample\.php|README\.md|\.git.*)$ - [F,L]
+  RewriteRule ^(config\.php|config\.sample\.php|README\.md|deploy\.sh|\.git.*|\.deploy.*)$ - [F,L]
 
   # File statis (CSS, JS, font, gambar) dilayani langsung
   RewriteCond %{REQUEST_FILENAME} -f
