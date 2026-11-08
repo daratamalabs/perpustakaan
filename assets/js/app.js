@@ -1,4 +1,4 @@
-/* Perpustakaan Digital Sekolah — helper umum */
+/* SatuPerpus — helper umum */
 (function () {
   'use strict';
   var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';

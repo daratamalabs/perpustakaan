@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy Perpustakaan Digital ke Hostinger.
+# Deploy SatuPerpus ke Hostinger.
 #
 #   ./deploy.sh setup    Sekali saja: cek SSH & folder subdomain, lalu kirim kode pertama kali
 #   ./deploy.sh          Commit & sinkron dengan GitHub, lalu kirim kode ke server

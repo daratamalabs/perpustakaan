@@ -7,7 +7,7 @@ const RESERVED_SLUGS = ['superadmin', 'install', 'assets', 'storage', 'app', 'ap
 function platform_home(): string
 {
     $schools = DB::q('SELECT * FROM tenants WHERE active = 1 ORDER BY name');
-    return view('platform/home', ['schools' => $schools, 'title' => 'Perpustakaan Digital Sekolah'], 'bare');
+    return view('platform/home', ['schools' => $schools, 'title' => 'Perpustakaan digital sekolah'], 'bare');
 }
 
 function platform_login_form(): string

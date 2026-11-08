@@ -1,6 +1,6 @@
 <?php
 /**
- * Perpustakaan Digital Sekolah — front controller.
+ * SatuPerpus (perpustakaan digital sekolah) — front controller.
  * Semua permintaan (kecuali /assets) masuk ke sini lewat .htaccess.
  */
 declare(strict_types=1);

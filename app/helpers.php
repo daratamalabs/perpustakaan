@@ -35,6 +35,9 @@ function abs_url(string $relative): string
     return $base . $relative;
 }
 
+/** Wordmark SatuPerpus: "Perpus" diberi aksen emas. */
+function app_wordmark(): string { return 'Satu<span class="wm-accent">Perpus</span>'; }
+
 function asset(string $path): string { return App::$base . '/assets/' . ltrim($path, '/') . '?v=' . APP_VERSION; }
 
 function redirect(string $to): never

@@ -1,6 +1,6 @@
 <div class="auth-wrap">
   <section class="auth-side">
-    <span class="brand"><span class="mark"><?= icon('logo', 22) ?></span><span class="brand-text"><span class="eyebrow">Daratama Labs</span><strong>Perpustakaan Digital Sekolah</strong></span></span>
+    <span class="brand"><span class="mark"><?= icon('logo', 22) ?></span><span class="brand-text"><span class="eyebrow">Daratama Labs</span><strong><?= app_wordmark() ?></strong></span></span>
     <h1>Kelola semua sekolah dari satu panel.</h1>
     <?= spines_html() ?>
   </section>

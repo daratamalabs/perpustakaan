@@ -1,6 +1,6 @@
 <div class="landing">
   <div class="landing-inner">
-    <span class="brand"><span class="mark"><?= icon('logo', 22) ?></span><span class="brand-text"><span class="eyebrow">Daratama Labs</span><strong>Perpustakaan Digital Sekolah</strong></span></span>
+    <span class="brand"><span class="mark"><?= icon('logo', 22) ?></span><span class="brand-text"><span class="eyebrow">Daratama Labs</span><strong><?= app_wordmark() ?></strong></span></span>
     <div class="stack" style="gap:18px">
       <h1>Perpustakaan sekolah yang tertata, dari rak sampai meja depan.</h1>
       <p style="font-size:17px;color:var(--soft-on-navy);max-width:640px;line-height:1.6">Katalog buku, aset, peminjaman, dan kunjungan siswa lewat kartu QR. Pilih perpustakaan sekolahmu di bawah ini.</p>

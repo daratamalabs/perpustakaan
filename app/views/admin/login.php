@@ -10,7 +10,7 @@
       </ul>
     </div>
     <div class="row-between">
-      <span class="small" style="color:var(--muted-on-navy)">© <?= date('Y') ?> <?= e(Tenant::get('library_name')) ?></span>
+      <span class="small" style="color:var(--muted-on-navy)">© <?= date('Y') ?> <?= e(Tenant::get('library_name')) ?> · Didukung <?= APP_NAME ?></span>
       <?= spines_html() ?>
     </div>
   </section>

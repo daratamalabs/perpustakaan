@@ -1,6 +1,6 @@
-# Perpustakaan Digital Sekolah — Daratama Labs
+# SatuPerpus — Daratama Labs
 
-Aplikasi perpustakaan sekolah berbasis web (PHP + MySQL) untuk banyak sekolah sekaligus.
+**SatuPerpus** adalah aplikasi perpustakaan sekolah berbasis web (PHP + MySQL) untuk banyak sekolah sekaligus.
 Setiap sekolah punya alamat sendiri, misalnya:
 
 | Sekolah            | Alamat                                               |

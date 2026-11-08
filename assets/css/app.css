@@ -1,4 +1,4 @@
-/* Perpustakaan Digital Sekolah — sistem desain
+/* SatuPerpus — sistem desain
    Navy akademik, emas prestasi, latar kertas hangat. */
 
 @font-face { font-family: 'Plus Jakarta Sans'; font-weight: 400; font-display: swap; src: url('../fonts/plus-jakarta-sans-latin-400-normal.woff2') format('woff2'); }
@@ -479,6 +479,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .school-card .mark { width: 48px; height: 48px; }
 .school-card span { color: var(--muted-on-navy); font-size: 13px; }
 .school-card strong { color: #fff; }
+.wm-accent { color: var(--gold-500); }
 .req-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .req-list li { display: flex; align-items: center; gap: 8px; }
 .req-list li svg { flex-shrink: 0; }
