@@ -17,9 +17,9 @@ GITHUB_ALIAS="github-perpustakaan"          # alias SSH di server, memakai kunci
 APP_URL="https://perpustakaan.daratamalabs.com"
 
 if [ -t 1 ]; then G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'; else G=; Y=; R=; B=; D=; N=; fi
-say()  { printf '%s▸%s %s\n' "$G" "$N" "$*"; }
-warn() { printf '%s!%s %s\n' "$Y" "$N" "$*"; }
-die()  { printf '%s✗ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
+say()  { printf '%s==>%s %s\n' "$G" "$N" "$*"; }
+warn() { printf '%s !!%s %s\n' "$Y" "$N" "$*"; }
+die()  { printf '%sGAGAL: %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
 
 save_env() {
   {
@@ -33,7 +33,7 @@ save_env() {
 
 load_env() {
   if [ ! -f "$ENV_FILE" ]; then
-    echo "${B}Data SSH Hostinger${N} ${D}(hPanel → Advanced → SSH Access)${N}"
+    echo "${B}Data SSH Hostinger${N} ${D}(hPanel > Advanced > SSH Access)${N}"
     read -r -p "  IP / host SSH               : " DEPLOY_HOST
     read -r -p "  Port SSH [65002]            : " DEPLOY_PORT
     read -r -p "  Username SSH (u123456789)   : " DEPLOY_USER
@@ -68,7 +68,7 @@ git fetch -q --depth 1 origin "$BRANCH"
 git reset -q --hard FETCH_HEAD
 for d in sessions uploads backups cache; do mkdir -p "storage/$d"; done
 chmod 755 storage storage/sessions storage/uploads storage/backups storage/cache
-echo "VERSI: $(git log -1 --format="%h · %s · %cd" --date=format:"%d %b %Y %H:%M")"
+echo "VERSI: $(git log -1 --format="%h - %s - %cd" --date=format:"%d %b %Y %H:%M")"
 if [ -f config.php ]; then echo "CONFIG: ada"; else echo "CONFIG: belum"; fi
 '
 
@@ -113,7 +113,7 @@ report() {
   code=${code:-000}
   case "$code" in
     200|302) say "Online: $APP_URL (HTTP $code)" ;;
-    404) warn "$APP_URL menjawab 404 dari Hostinger: folder subdomain bukan $DEPLOY_PATH. Jalankan ./deploy.sh setup lagi, atau cek hPanel → Domains → Subdomains." ;;
+    404) warn "${APP_URL} menjawab 404 dari Hostinger: kode belum ada di folder subdomain. Jalankan ./deploy.sh setup lagi, atau cek folder di hPanel > Domains > Subdomains." ;;
     *) warn "$APP_URL belum bisa dibuka (HTTP $code). Cek subdomain & SSL di hPanel, atau buka langsung di browser." ;;
   esac
   if printf '%s\n' "$1" | grep -q '^CONFIG: belum'; then
@@ -123,7 +123,7 @@ report() {
 
 cmd_setup() {
   load_env
-  say "Menyiapkan kunci deploy & memeriksa folder subdomain di server…"
+  say "Menyiapkan kunci deploy & memeriksa folder subdomain di server..."
   # Folder yang biasa dipakai Hostinger untuk subdomain, urut dari yang paling spesifik.
   local host="${APP_URL#*://}"; host="${host%%/*}"
   local sub="${host%%.*}" parent="${host#*.}"
@@ -137,16 +137,16 @@ cmd_setup() {
     local yn; read -r -p "Pakai folder $best? [Y/n] " yn
     case "$yn" in n|N) ;; *) DEPLOY_PATH="$best"; save_env; say "Folder deploy: $DEPLOY_PATH" ;; esac
   elif [ -z "$best" ] && printf '%s\n' "$keyout" | grep -q '^DIR: tidak'; then
-    die "Folder $DEPLOY_PATH tidak ada di server. Lihat folder subdomain di hPanel → Domains → Subdomains, lalu hapus $ENV_FILE dan jalankan ./deploy.sh setup lagi."
+    die "Folder $DEPLOY_PATH tidak ada di server. Lihat folder subdomain di hPanel > Domains > Subdomains, lalu hapus $ENV_FILE dan jalankan ./deploy.sh setup lagi."
   fi
   printf '%s\n' "$keyout" | grep '^PUBKEY:'
   echo
   echo "${B}Tambahkan kunci di atas (baris setelah PUBKEY:) ke GitHub:${N}"
-  echo "  https://github.com/$GITHUB_REPO/settings/keys → Add deploy key"
+  echo "  https://github.com/$GITHUB_REPO/settings/keys > Add deploy key"
   echo "  Title: Hostinger, Key: tempel kuncinya, biarkan 'Allow write access' TIDAK dicentang."
-  read -r -p "Tekan Enter setelah kunci ditambahkan… " _
+  read -r -p "Tekan Enter setelah kunci ditambahkan... " _
 
-  say "Mengambil kode ke $DEPLOY_PATH…"
+  say "Mengambil kode ke $DEPLOY_PATH..."
   local out
   out=$(remote "$DEPLOY_PATH" "$BRANCH" "git@$GITHUB_ALIAS:$GITHUB_REPO.git" <<<"$REMOTE_INIT
 $REMOTE_UPDATE") || die "Gagal mengambil kode dari GitHub. Pastikan deploy key sudah ditambahkan, lalu jalankan ./deploy.sh setup lagi."
@@ -169,13 +169,13 @@ cmd_deploy() {
     git commit -q -m "$msg"
   fi
 
-  say "Sinkron dengan GitHub…"
+  say "Sinkron dengan GitHub..."
   git pull -q --rebase origin "$BRANCH" || die "Gagal mengambil dari GitHub. Cek koneksi atau login GitHub (gh auth login)."
   if [ -n "$(git rev-list "origin/$BRANCH..HEAD")" ]; then
     git push -q origin "$BRANCH" || die "Gagal push ke GitHub. Login dulu dengan: gh auth login (pilih HTTPS), lalu ulangi ./deploy.sh"
   fi
 
-  say "Memperbarui server…"
+  say "Memperbarui server..."
   local out
   out=$(remote "$DEPLOY_PATH" "$BRANCH" <<<"$REMOTE_UPDATE") || die "Gagal memperbarui server. Sudah menjalankan ./deploy.sh setup?"
   report "$out"
@@ -186,10 +186,10 @@ cmd_status() {
   remote "$DEPLOY_PATH" <<'REMOTE'
 P="$1"; case "$P" in /*) ;; *) P="$HOME/$P" ;; esac
 cd "$P" 2>/dev/null || { echo "Folder belum ada. Jalankan ./deploy.sh setup"; exit 1; }
-git log -1 --format="Versi di server: %h · %s · %cd" --date=format:"%d %b %Y %H:%M"
+git log -1 --format="Versi di server: %h - %s - %cd" --date=format:"%d %b %Y %H:%M"
 [ -f config.php ] && echo "config.php: ada" || echo "config.php: belum (buka /install)"
 REMOTE
-  echo "Versi lokal     : $(git log -1 --format='%h · %s')"
+  echo "Versi lokal     : $(git log -1 --format='%h - %s')"
 }
 
 cmd_ssh() {
