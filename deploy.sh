@@ -21,6 +21,16 @@ say()  { printf '%s▸%s %s\n' "$G" "$N" "$*"; }
 warn() { printf '%s!%s %s\n' "$Y" "$N" "$*"; }
 die()  { printf '%s✗ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
 
+save_env() {
+  {
+    printf 'DEPLOY_HOST=%q\n' "$DEPLOY_HOST"
+    printf 'DEPLOY_PORT=%q\n' "$DEPLOY_PORT"
+    printf 'DEPLOY_USER=%q\n' "$DEPLOY_USER"
+    printf 'DEPLOY_PATH=%q\n' "$DEPLOY_PATH"
+  } > "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+}
+
 load_env() {
   if [ ! -f "$ENV_FILE" ]; then
     echo "${B}Data SSH Hostinger${N} ${D}(hPanel → Advanced → SSH Access)${N}"
@@ -32,13 +42,7 @@ load_env() {
     read -r -p "  [$def]: " DEPLOY_PATH
     DEPLOY_PORT=${DEPLOY_PORT:-65002}
     DEPLOY_PATH=${DEPLOY_PATH:-$def}
-    {
-      printf 'DEPLOY_HOST=%q\n' "$DEPLOY_HOST"
-      printf 'DEPLOY_PORT=%q\n' "$DEPLOY_PORT"
-      printf 'DEPLOY_USER=%q\n' "$DEPLOY_USER"
-      printf 'DEPLOY_PATH=%q\n' "$DEPLOY_PATH"
-    } > "$ENV_FILE"
-    chmod 600 "$ENV_FILE"
+    save_env
     say "Tersimpan di $ENV_FILE"
   fi
   # shellcheck disable=SC1090
@@ -83,6 +87,24 @@ else
 fi
 '
 
+# Setup langkah 1: kunci deploy khusus repo ini + cek folder. $1 alias, $2 folder tersimpan, $3.. kandidat.
+REMOTE_KEYS='
+set -e
+ALIAS="$1"; P="$2"; shift 2
+KEY="$HOME/.ssh/perpustakaan_deploy"
+mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+[ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N "" -C "perpustakaan-deploy" -f "$KEY"
+if ! grep -q "^Host $ALIAS\$" "$HOME/.ssh/config" 2>/dev/null; then
+  printf "\nHost %s\n  HostName github.com\n  User git\n  IdentityFile %s\n  IdentitiesOnly yes\n" "$ALIAS" "$KEY" >> "$HOME/.ssh/config"
+fi
+chmod 600 "$HOME/.ssh/config"
+ssh-keygen -F github.com >/dev/null 2>&1 || ssh-keyscan -t ed25519,rsa github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+echo "PUBKEY: $(cat "$KEY.pub")"
+case "$P" in /*) A="$P" ;; *) A="$HOME/$P" ;; esac
+if [ -d "$A" ]; then echo "DIR: ada"; else echo "DIR: tidak"; fi
+for c in "$@"; do if [ -d "$HOME/$c" ]; then echo "CAND: $c"; fi; done
+'
+
 # Ringkasan setelah server diperbarui. $1 = keluaran dari server.
 report() {
   printf '%s\n' "$1" | sed -n 's/^VERSI: /  Versi di server: /p'
@@ -91,6 +113,7 @@ report() {
   code=${code:-000}
   case "$code" in
     200|302) say "Online: $APP_URL (HTTP $code)" ;;
+    404) warn "$APP_URL menjawab 404 dari Hostinger: folder subdomain bukan $DEPLOY_PATH. Jalankan ./deploy.sh setup lagi, atau cek hPanel → Domains → Subdomains." ;;
     *) warn "$APP_URL belum bisa dibuka (HTTP $code). Cek subdomain & SSL di hPanel, atau buka langsung di browser." ;;
   esac
   if printf '%s\n' "$1" | grep -q '^CONFIG: belum'; then
@@ -100,23 +123,23 @@ report() {
 
 cmd_setup() {
   load_env
-  say "Menyiapkan kunci deploy di server…"
-  set +e
-  remote "$GITHUB_ALIAS" <<'REMOTE'
-set -e
-ALIAS="$1"
-KEY="$HOME/.ssh/perpustakaan_deploy"
-mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
-[ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N "" -C "perpustakaan-deploy" -f "$KEY"
-if ! grep -q "^Host $ALIAS\$" "$HOME/.ssh/config" 2>/dev/null; then
-  printf '\nHost %s\n  HostName github.com\n  User git\n  IdentityFile %s\n  IdentitiesOnly yes\n' "$ALIAS" "$KEY" >> "$HOME/.ssh/config"
-fi
-chmod 600 "$HOME/.ssh/config"
-ssh-keygen -F github.com >/dev/null 2>&1 || ssh-keyscan -t ed25519,rsa github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
-echo "PUBKEY: $(cat "$KEY.pub")"
-REMOTE
-  [ $? -eq 0 ] || die "Tidak bisa masuk SSH ke server. Cek data di $ENV_FILE dan pastikan SSH Access aktif di hPanel."
-  set -e
+  say "Menyiapkan kunci deploy & memeriksa folder subdomain di server…"
+  # Folder yang biasa dipakai Hostinger untuk subdomain, urut dari yang paling spesifik.
+  local host="${APP_URL#*://}"; host="${host%%/*}"
+  local sub="${host%%.*}" parent="${host#*.}"
+  local keyout
+  keyout=$(remote "$GITHUB_ALIAS" "$DEPLOY_PATH" "domains/$host/public_html" "domains/$parent/public_html/$sub" "public_html/$sub" <<<"$REMOTE_KEYS") \
+    || die "Tidak bisa masuk SSH ke server. Cek data di $ENV_FILE dan pastikan SSH Access aktif di hPanel."
+
+  local best; best=$(printf '%s\n' "$keyout" | sed -n 's/^CAND: //p' | head -n 1)
+  if [ -n "$best" ] && [ "$best" != "$DEPLOY_PATH" ]; then
+    warn "Folder subdomain yang ada di server: ${B}$best${N} (tersimpan: $DEPLOY_PATH)"
+    local yn; read -r -p "Pakai folder $best? [Y/n] " yn
+    case "$yn" in n|N) ;; *) DEPLOY_PATH="$best"; save_env; say "Folder deploy: $DEPLOY_PATH" ;; esac
+  elif [ -z "$best" ] && printf '%s\n' "$keyout" | grep -q '^DIR: tidak'; then
+    die "Folder $DEPLOY_PATH tidak ada di server. Lihat folder subdomain di hPanel → Domains → Subdomains, lalu hapus $ENV_FILE dan jalankan ./deploy.sh setup lagi."
+  fi
+  printf '%s\n' "$keyout" | grep '^PUBKEY:'
   echo
   echo "${B}Tambahkan kunci di atas (baris setelah PUBKEY:) ke GitHub:${N}"
   echo "  https://github.com/$GITHUB_REPO/settings/keys → Add deploy key"

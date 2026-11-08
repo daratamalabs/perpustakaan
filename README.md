@@ -45,7 +45,7 @@ Kode disimpan di GitHub (`daratamalabs/perpustakaan`). Server Hostinger mengambi
 
 ### Persiapan di hPanel (sekali)
 
-1. **Subdomain** `perpustakaan.daratamalabs.com`. Catat foldernya, biasanya `public_html/perpustakaan`, atau lengkapnya `domains/daratamalabs.com/public_html/perpustakaan`.
+1. **Subdomain** `perpustakaan.daratamalabs.com`. Foldernya dideteksi otomatis oleh `./deploy.sh setup` (`domains/perpustakaan.daratamalabs.com/public_html` atau `domains/daratamalabs.com/public_html/perpustakaan`). Kalau tidak terdeteksi, lihat foldernya di *Domains → Subdomains*.
 2. **SSL** untuk subdomain itu (*Security → SSL*). HTTPS wajib agar kamera bisa dipakai untuk scan QR.
 3. **Database** (*Databases → MySQL Databases*): buat database dan user baru, lalu catat nama database, user, dan password-nya.
 4. **SSH Access** (*Advanced → SSH Access*): aktifkan, lalu catat IP, port (biasanya `65002`), dan username (`u123456789`). Agar tidak diminta password setiap deploy, tambahkan kunci SSH publik Mac (`~/.ssh/id_ed25519.pub`) di bagian *SSH Keys*.
@@ -63,7 +63,9 @@ Kalau repo private dan Git meminta login, jalankan `gh auth login` sekali (pilih
 `setup` akan:
 1. Menanyakan data SSH, lalu menyimpannya di `.deploy.env` (tidak ikut ke GitHub).
 2. Membuat kunci deploy khusus di server dan menampilkannya. Tambahkan kunci itu di GitHub: repo → *Settings → Deploy keys → Add deploy key*. Jangan centang *Allow write access*.
-3. Mengambil kode ke folder subdomain. Halaman bawaan Hostinger (`default.php`) ikut dihapus.
+3. Memeriksa folder subdomain di server, lalu mengambil kode ke sana. Halaman bawaan Hostinger (`default.php`) ikut dihapus.
+
+Jika `https://perpustakaan.daratamalabs.com` menampilkan halaman 404 Hostinger, berarti kode belum ada di folder yang dipakai subdomain. Jalankan `./deploy.sh setup` lagi.
 
 Lanjutkan di browser:
 
