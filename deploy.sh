@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Deploy Perpustakaan Digital ke Hostinger (SSH + git).
+# Deploy Perpustakaan Digital ke Hostinger.
 #
-#   ./deploy.sh setup    Sekali saja: siapkan kunci deploy & ambil kode pertama kali di server
-#   ./deploy.sh          Kirim perubahan ke GitHub lalu perbarui server
+#   ./deploy.sh setup    Sekali saja: cek SSH & folder subdomain, lalu kirim kode pertama kali
+#   ./deploy.sh          Commit & sinkron dengan GitHub, lalu kirim kode ke server
 #   ./deploy.sh status   Lihat versi yang sedang berjalan di server
 #   ./deploy.sh ssh      Buka terminal server di folder aplikasi
 #
-# Data SSH disimpan di .deploy.env (tidak ikut ke GitHub).
+# Kode dikirim langsung dari komputer ini ke server lewat SSH (git push),
+# jadi server tidak butuh akses ke GitHub. Data SSH disimpan di .deploy.env.
+# Berkas ini sengaja hanya memakai karakter ASCII (bash 3.2 bawaan macOS).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 ENV_FILE=".deploy.env"
 BRANCH="main"
-GITHUB_REPO="daratamalabs/perpustakaan"
-GITHUB_ALIAS="github-perpustakaan"          # alias SSH di server, memakai kunci deploy khusus repo ini
 APP_URL="https://perpustakaan.daratamalabs.com"
+SERVER_REPO="repos/perpustakaan.git"   # repo git di server (relatif dari home), di luar folder web
+CTL_PATH="$HOME/.ssh/cm-perpus-%C"      # satu koneksi SSH dipakai bersama: password cukup sekali
 
 if [ -t 1 ]; then G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'; else G=; Y=; R=; B=; D=; N=; fi
 say()  { printf '%s==>%s %s\n' "$G" "$N" "$*"; }
@@ -39,126 +41,145 @@ load_env() {
     read -r -p "  Username SSH (u123456789)   : " DEPLOY_USER
     local def="domains/daratamalabs.com/public_html/perpustakaan"
     echo "  Folder subdomain di server, relatif dari home."
-    read -r -p "  [$def]: " DEPLOY_PATH
+    read -r -p "  [${def}]: " DEPLOY_PATH
     DEPLOY_PORT=${DEPLOY_PORT:-65002}
     DEPLOY_PATH=${DEPLOY_PATH:-$def}
     save_env
-    say "Tersimpan di $ENV_FILE"
+    say "Tersimpan di ${ENV_FILE}"
   fi
   # shellcheck disable=SC1090
   . "./$ENV_FILE"
-  [ -n "${DEPLOY_HOST:-}" ] && [ -n "${DEPLOY_USER:-}" ] && [ -n "${DEPLOY_PATH:-}" ] || die "Isi $ENV_FILE belum lengkap. Hapus berkasnya lalu jalankan lagi."
+  [ -n "${DEPLOY_HOST:-}" ] && [ -n "${DEPLOY_USER:-}" ] && [ -n "${DEPLOY_PATH:-}" ] || die "Isi ${ENV_FILE} belum lengkap. Hapus berkasnya lalu jalankan lagi."
   DEPLOY_PORT=${DEPLOY_PORT:-65002}
+  mkdir -p "$HOME/.ssh"
 }
 
-# Jalankan skrip bash di server. Argumen setelah nama fungsi diteruskan sebagai $1, $2, ...
+# Jalankan skrip bash (dari stdin) di server; argumen jadi $1, $2, ...
+# ControlMaster membuat semua langkah memakai satu koneksi: password cukup sekali.
 remote() {
   local args="" a
   for a in "$@"; do args="$args $(printf '%q' "$a")"; done
-  ssh -p "$DEPLOY_PORT" -o ServerAliveInterval=20 -o ConnectTimeout=15 "$DEPLOY_USER@$DEPLOY_HOST" "bash -s --$args"
+  ssh -p "$DEPLOY_PORT" -o ServerAliveInterval=20 -o ConnectTimeout=15 \
+      -o ControlMaster=auto -o ControlPersist=120 -o "ControlPath=$CTL_PATH" \
+      "$DEPLOY_USER@$DEPLOY_HOST" "bash -s --$args"
 }
 
-# Bagian bersama di server: ambil kode terbaru dari GitHub, siapkan folder storage.
-REMOTE_UPDATE='
-set -e
-P="$1"; BRANCH="$2"
-case "$P" in /*) ;; *) P="$HOME/$P" ;; esac
-cd "$P"
-git fetch -q --depth 1 origin "$BRANCH"
-git reset -q --hard FETCH_HEAD
-for d in sessions uploads backups cache; do mkdir -p "storage/$d"; done
-chmod 755 storage storage/sessions storage/uploads storage/backups storage/cache
-echo "VERSI: $(git log -1 --format="%h - %s - %cd" --date=format:"%d %b %Y %H:%M")"
-if [ -f config.php ]; then echo "CONFIG: ada"; else echo "CONFIG: belum"; fi
-'
+# --- Skrip yang dijalankan di server --------------------------------------------------------
 
-# Sekali saat setup: jadikan folder subdomain sebuah repo git yang menunjuk ke GitHub.
-REMOTE_INIT='
+# Setup: siapkan repo git di server dan periksa folder subdomain. $1 folder, $2 repo, $3.. kandidat folder.
+REMOTE_PREPARE='
 set -e
-P="$1"; REPO="$3"
-case "$P" in /*) ;; *) P="$HOME/$P" ;; esac
-mkdir -p "$P" && cd "$P"
-if [ ! -d .git ]; then
-  rm -f default.php
-  git init -q
-  git remote add origin "$REPO"
-else
-  git remote set-url origin "$REPO"
-fi
-'
-
-# Setup langkah 1: kunci deploy khusus repo ini + cek folder. $1 alias, $2 folder tersimpan, $3.. kandidat.
-REMOTE_KEYS='
-set -e
-ALIAS="$1"; P="$2"; shift 2
-KEY="$HOME/.ssh/perpustakaan_deploy"
-mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
-[ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N "" -C "perpustakaan-deploy" -f "$KEY"
-if ! grep -q "^Host $ALIAS\$" "$HOME/.ssh/config" 2>/dev/null; then
-  printf "\nHost %s\n  HostName github.com\n  User git\n  IdentityFile %s\n  IdentitiesOnly yes\n" "$ALIAS" "$KEY" >> "$HOME/.ssh/config"
-fi
-chmod 600 "$HOME/.ssh/config"
-ssh-keygen -F github.com >/dev/null 2>&1 || ssh-keyscan -t ed25519,rsa github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
-echo "PUBKEY: $(cat "$KEY.pub")"
+P="$1"; GR="$2"; shift 2
 case "$P" in /*) A="$P" ;; *) A="$HOME/$P" ;; esac
+case "$GR" in /*) ;; *) GR="$HOME/$GR" ;; esac
+if ! command -v git >/dev/null 2>&1; then echo "NOGIT"; exit 0; fi
+if [ ! -d "$GR" ]; then mkdir -p "$GR"; git init -q --bare "$GR"; fi
 if [ -d "$A" ]; then echo "DIR: ada"; else echo "DIR: tidak"; fi
 for c in "$@"; do if [ -d "$HOME/$c" ]; then echo "CAND: $c"; fi; done
 '
 
+# Pasang versi yang baru dikirim (cabang "deploy") ke folder web. $1 folder, $2 repo.
+REMOTE_INSTALL='
+set -e
+P="$1"; GR="$2"
+case "$P" in /*) ;; *) P="$HOME/$P" ;; esac
+case "$GR" in /*) ;; *) GR="$HOME/$GR" ;; esac
+mkdir -p "$P"
+cd "$P"
+# Sisa cara deploy lama (repo git di folder web yang menarik dari GitHub) dan halaman bawaan Hostinger.
+if [ -d .git ] && grep -q "github-perpustakaan" .git/config 2>/dev/null; then rm -rf .git; fi
+rm -f default.php
+git --git-dir="$GR" --work-tree="$P" checkout -q -f deploy
+for d in sessions uploads backups cache; do mkdir -p "storage/$d"; done
+chmod 755 storage storage/sessions storage/uploads storage/backups storage/cache
+echo "VERSI: $(git --git-dir="$GR" log -1 --format="%h - %s - %cd" --date=format:"%d %b %Y %H:%M" deploy)"
+if [ -f config.php ]; then echo "CONFIG: ada"; else echo "CONFIG: belum"; fi
+'
+
+# Status: versi yang terpasang. $1 folder, $2 repo.
+REMOTE_STATUS='
+P="$1"; GR="$2"
+case "$P" in /*) ;; *) P="$HOME/$P" ;; esac
+case "$GR" in /*) ;; *) GR="$HOME/$GR" ;; esac
+if git --git-dir="$GR" rev-parse -q --verify deploy >/dev/null 2>&1; then
+  git --git-dir="$GR" log -1 --format="Versi di server : %h - %s - %cd" --date=format:"%d %b %Y %H:%M" deploy
+else
+  echo "Versi di server : belum ada (jalankan ./deploy.sh setup)"
+fi
+if [ -f "$P/config.php" ]; then echo "config.php      : ada"; else echo "config.php      : belum (buka /install)"; fi
+'
+
+# --- Langkah-langkah ------------------------------------------------------------------------
+
+# Kirim HEAD ke server lalu pasang di folder web.
+ship() {
+  say "Mengirim kode ke server..."
+  local sshcmd
+  sshcmd="ssh -p $DEPLOY_PORT -o ServerAliveInterval=20 -o ConnectTimeout=15 -o ControlMaster=auto -o ControlPersist=120 -o ControlPath=$(printf '%q' "$CTL_PATH")"
+  GIT_SSH_COMMAND="$sshcmd" git push -q -f "$DEPLOY_USER@$DEPLOY_HOST:$SERVER_REPO" "HEAD:refs/heads/deploy" \
+    || die "Gagal mengirim kode ke server. Jalankan ./deploy.sh setup dulu."
+  local out
+  out=$(remote "$DEPLOY_PATH" "$SERVER_REPO" <<<"$REMOTE_INSTALL") || die "Kode terkirim, tapi gagal dipasang di folder ${DEPLOY_PATH}."
+  report "$out"
+}
+
 # Ringkasan setelah server diperbarui. $1 = keluaran dari server.
 report() {
-  printf '%s\n' "$1" | sed -n 's/^VERSI: /  Versi di server: /p'
+  printf '%s\n' "$1" | sed -n 's/^VERSI: /    Versi di server: /p'
   local code
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$APP_URL/") || true
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${APP_URL}/") || true
   code=${code:-000}
   case "$code" in
-    200|302) say "Online: $APP_URL (HTTP $code)" ;;
-    404) warn "${APP_URL} menjawab 404 dari Hostinger: kode belum ada di folder subdomain. Jalankan ./deploy.sh setup lagi, atau cek folder di hPanel > Domains > Subdomains." ;;
-    *) warn "$APP_URL belum bisa dibuka (HTTP $code). Cek subdomain & SSL di hPanel, atau buka langsung di browser." ;;
+    200|302) say "Online: ${APP_URL} (HTTP ${code})" ;;
+    404) warn "${APP_URL} menjawab 404 dari Hostinger: folder subdomain bukan ${DEPLOY_PATH}. Cek folder di hPanel > Domains > Subdomains, hapus ${ENV_FILE}, lalu ./deploy.sh setup lagi." ;;
+    *) warn "${APP_URL} belum bisa dibuka (HTTP ${code}). Cek subdomain & SSL di hPanel, atau buka langsung di browser." ;;
   esac
   if printf '%s\n' "$1" | grep -q '^CONFIG: belum'; then
-    warn "Aplikasi belum diinstal. Lanjutkan di browser: ${B}$APP_URL/install${N}"
+    warn "Aplikasi belum diinstal. Lanjutkan di browser: ${B}${APP_URL}/install${N}"
   fi
+}
+
+# Ambil perubahan terbaru dari GitHub; push hanya jika ada commit lokal baru.
+sync_github() {
+  say "Sinkron dengan GitHub..."
+  git pull -q --rebase origin "$BRANCH" || die "Gagal mengambil dari GitHub. Cek koneksi, atau login dengan: gh auth login"
+  if [ -n "$(git rev-list "origin/${BRANCH}..HEAD")" ]; then
+    git push -q origin "$BRANCH" || die "Gagal push ke GitHub. Login dulu dengan: gh auth login (pilih HTTPS), lalu ulangi ./deploy.sh"
+  fi
+}
+
+check_branch() {
+  git rev-parse --git-dir >/dev/null 2>&1 || die "Jalankan dari folder repo perpustakaan."
+  local cur; cur=$(git rev-parse --abbrev-ref HEAD)
+  [ "$cur" = "$BRANCH" ] || die "Sedang di branch '${cur}'. Pindah ke '${BRANCH}' dulu: git checkout ${BRANCH}"
 }
 
 cmd_setup() {
   load_env
-  say "Menyiapkan kunci deploy & memeriksa folder subdomain di server..."
-  # Folder yang biasa dipakai Hostinger untuk subdomain, urut dari yang paling spesifik.
+  check_branch
+  say "Memeriksa SSH & folder subdomain di server..."
   local host="${APP_URL#*://}"; host="${host%%/*}"
   local sub="${host%%.*}" parent="${host#*.}"
-  local keyout
-  keyout=$(remote "$GITHUB_ALIAS" "$DEPLOY_PATH" "domains/$host/public_html" "domains/$parent/public_html/$sub" "public_html/$sub" <<<"$REMOTE_KEYS") \
-    || die "Tidak bisa masuk SSH ke server. Cek data di $ENV_FILE dan pastikan SSH Access aktif di hPanel."
-
-  local best; best=$(printf '%s\n' "$keyout" | sed -n 's/^CAND: //p' | head -n 1)
-  if [ -n "$best" ] && [ "$best" != "$DEPLOY_PATH" ]; then
-    warn "Folder subdomain yang ada di server: ${B}$best${N} (tersimpan: $DEPLOY_PATH)"
-    local yn; read -r -p "Pakai folder $best? [Y/n] " yn
-    case "$yn" in n|N) ;; *) DEPLOY_PATH="$best"; save_env; say "Folder deploy: $DEPLOY_PATH" ;; esac
-  elif [ -z "$best" ] && printf '%s\n' "$keyout" | grep -q '^DIR: tidak'; then
-    die "Folder $DEPLOY_PATH tidak ada di server. Lihat folder subdomain di hPanel > Domains > Subdomains, lalu hapus $ENV_FILE dan jalankan ./deploy.sh setup lagi."
-  fi
-  printf '%s\n' "$keyout" | grep '^PUBKEY:'
-  echo
-  echo "${B}Tambahkan kunci di atas (baris setelah PUBKEY:) ke GitHub:${N}"
-  echo "  https://github.com/$GITHUB_REPO/settings/keys > Add deploy key"
-  echo "  Title: Hostinger, Key: tempel kuncinya, biarkan 'Allow write access' TIDAK dicentang."
-  read -r -p "Tekan Enter setelah kunci ditambahkan... " _
-
-  say "Mengambil kode ke $DEPLOY_PATH..."
   local out
-  out=$(remote "$DEPLOY_PATH" "$BRANCH" "git@$GITHUB_ALIAS:$GITHUB_REPO.git" <<<"$REMOTE_INIT
-$REMOTE_UPDATE") || die "Gagal mengambil kode dari GitHub. Pastikan deploy key sudah ditambahkan, lalu jalankan ./deploy.sh setup lagi."
-  report "$out"
+  out=$(remote "$DEPLOY_PATH" "$SERVER_REPO" "domains/${host}/public_html" "domains/${parent}/public_html/${sub}" "public_html/${sub}" <<<"$REMOTE_PREPARE") \
+    || die "Tidak bisa masuk SSH ke server. Cek data di ${ENV_FILE} dan pastikan SSH Access aktif di hPanel."
+  printf '%s\n' "$out" | grep -q '^NOGIT' && die "Perintah git tidak tersedia di server."
+
+  local best; best=$(printf '%s\n' "$out" | sed -n 's/^CAND: //p' | head -n 1)
+  if [ -n "$best" ] && [ "$best" != "$DEPLOY_PATH" ]; then
+    warn "Folder subdomain yang ada di server: ${B}${best}${N} (tersimpan: ${DEPLOY_PATH})"
+    local yn; read -r -p "Pakai folder ${best}? [Y/n] " yn
+    case "$yn" in n|N) ;; *) DEPLOY_PATH="$best"; save_env ;; esac
+  elif [ -z "$best" ] && printf '%s\n' "$out" | grep -q '^DIR: tidak'; then
+    die "Folder ${DEPLOY_PATH} tidak ada di server. Lihat folder subdomain di hPanel > Domains > Subdomains, hapus ${ENV_FILE}, lalu ./deploy.sh setup lagi."
+  fi
+  say "Folder aplikasi: ${DEPLOY_PATH}"
+  ship
 }
 
 cmd_deploy() {
   load_env
-  git rev-parse --git-dir >/dev/null 2>&1 || die "Jalankan dari folder repo perpustakaan."
-  local cur; cur=$(git rev-parse --abbrev-ref HEAD)
-  [ "$cur" = "$BRANCH" ] || die "Sedang di branch '$cur'. Pindah ke '$BRANCH' dulu: git checkout $BRANCH"
-
+  check_branch
   if [ -n "$(git status --porcelain)" ]; then
     warn "Ada perubahan yang belum di-commit:"
     git status --short
@@ -168,33 +189,20 @@ cmd_deploy() {
     git add -A
     git commit -q -m "$msg"
   fi
-
-  say "Sinkron dengan GitHub..."
-  git pull -q --rebase origin "$BRANCH" || die "Gagal mengambil dari GitHub. Cek koneksi atau login GitHub (gh auth login)."
-  if [ -n "$(git rev-list "origin/$BRANCH..HEAD")" ]; then
-    git push -q origin "$BRANCH" || die "Gagal push ke GitHub. Login dulu dengan: gh auth login (pilih HTTPS), lalu ulangi ./deploy.sh"
-  fi
-
-  say "Memperbarui server..."
-  local out
-  out=$(remote "$DEPLOY_PATH" "$BRANCH" <<<"$REMOTE_UPDATE") || die "Gagal memperbarui server. Sudah menjalankan ./deploy.sh setup?"
-  report "$out"
+  sync_github
+  ship
 }
 
 cmd_status() {
   load_env
-  remote "$DEPLOY_PATH" <<'REMOTE'
-P="$1"; case "$P" in /*) ;; *) P="$HOME/$P" ;; esac
-cd "$P" 2>/dev/null || { echo "Folder belum ada. Jalankan ./deploy.sh setup"; exit 1; }
-git log -1 --format="Versi di server: %h - %s - %cd" --date=format:"%d %b %Y %H:%M"
-[ -f config.php ] && echo "config.php: ada" || echo "config.php: belum (buka /install)"
-REMOTE
+  remote "$DEPLOY_PATH" "$SERVER_REPO" <<<"$REMOTE_STATUS"
   echo "Versi lokal     : $(git log -1 --format='%h - %s')"
 }
 
 cmd_ssh() {
   load_env
-  ssh -t -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "cd $(printf '%q' "$DEPLOY_PATH") 2>/dev/null; exec \$SHELL -l"
+  ssh -t -p "$DEPLOY_PORT" -o ControlMaster=auto -o ControlPersist=120 -o "ControlPath=$CTL_PATH" \
+      "$DEPLOY_USER@$DEPLOY_HOST" "cd $(printf '%q' "$DEPLOY_PATH") 2>/dev/null; exec \$SHELL -l"
 }
 
 case "${1:-deploy}" in
@@ -202,6 +210,6 @@ case "${1:-deploy}" in
   deploy) cmd_deploy ;;
   status) cmd_status ;;
   ssh)    cmd_ssh ;;
-  -h|--help|help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h|--help|help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "Perintah tidak dikenal: $1 (pakai: setup, status, ssh, atau tanpa argumen)" ;;
 esac
