@@ -1,0 +1,19 @@
+# Konfigurasi server (dibuat oleh /install, berisi password database)
+/config.php
+
+# Data runtime di server
+/storage/sessions/*
+/storage/uploads/*
+/storage/backups/*
+/storage/cache/*
+!/storage/*/.keep
+
+# Sistem
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.zip
+
+# Data SSH untuk deploy.sh (khusus komputer masing-masing)
+.deploy.env
