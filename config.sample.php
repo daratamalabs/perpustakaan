@@ -12,7 +12,7 @@ return [
         'pass' => 'ganti-dengan-password-database',
     ],
     // Alamat lengkap aplikasi tanpa garis miring di akhir. Dipakai untuk tautan di pesan WhatsApp.
-    'base_url' => 'https://perpustakaan.daratamalabs.com',
+    'base_url' => 'https://satuperpus.daratamalabs.com',
     // Kunci acak untuk keamanan sesi & tautan. Jangan dibagikan.
     'app_key' => 'ganti-dengan-teks-acak-panjang',
     // Token Fonnte cadangan (opsional). Tiap sekolah bisa memakai token sendiri di Pengaturan.

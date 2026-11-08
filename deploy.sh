@@ -5,6 +5,8 @@
 #   ./deploy.sh          Commit & sinkron dengan GitHub, lalu kirim kode ke server
 #   ./deploy.sh status   Lihat versi yang sedang berjalan di server
 #   ./deploy.sh ssh      Buka terminal server di folder aplikasi
+#   ./deploy.sh pindah   Pindahkan aplikasi ke folder subdomain baru (APP_URL di bawah),
+#                        termasuk config.php & unggahan; alamat lama dialihkan otomatis
 #
 # Kode dikirim langsung dari komputer ini ke server lewat SSH (git push),
 # jadi server tidak butuh akses ke GitHub. Data SSH disimpan di .deploy.env.
@@ -14,7 +16,7 @@ cd "$(dirname "$0")"
 
 ENV_FILE=".deploy.env"
 BRANCH="main"
-APP_URL="https://perpustakaan.daratamalabs.com"
+APP_URL="https://satuperpus.daratamalabs.com"
 SERVER_REPO="repos/perpustakaan.git"   # repo git di server (relatif dari home), di luar folder web
 CTL_PATH="$HOME/.ssh/cm-perpus-%C"      # satu koneksi SSH dipakai bersama: password cukup sekali
 
@@ -94,6 +96,39 @@ for d in sessions uploads backups cache; do mkdir -p "storage/$d"; done
 chmod 755 storage storage/sessions storage/uploads storage/backups storage/cache
 echo "VERSI: $(git --git-dir="$GR" log -1 --format="%h - %s - %cd" --date=format:"%d %b %Y %H:%M" deploy)"
 if [ -f config.php ]; then echo "CONFIG: ada"; else echo "CONFIG: belum"; fi
+'
+
+# Pindah folder: pasang kode di folder baru, bawa config.php & unggahan, arsipkan folder lama
+# dan ganti dengan pengalihan 301 ke alamat baru. $1 lama, $2 baru, $3 repo, $4 URL baru.
+REMOTE_MOVE='
+set -e
+shopt -s dotglob nullglob
+OLD="$1"; NEW="$2"; GR="$3"; URL="$4"
+case "$OLD" in /*) ;; *) OLD="$HOME/$OLD" ;; esac
+case "$NEW" in /*) ;; *) NEW="$HOME/$NEW" ;; esac
+case "$GR" in /*) ;; *) GR="$HOME/$GR" ;; esac
+if [ ! -f "$OLD/config.php" ] || [ ! -d "$OLD/app" ]; then echo "Aplikasi (config.php) tidak ditemukan di $OLD" >&2; exit 1; fi
+case "$NEW/" in "$OLD"/*) echo "Folder baru tidak boleh berada di dalam folder lama" >&2; exit 1 ;; esac
+mkdir -p "$NEW"
+cd "$NEW"
+rm -f default.php
+rm -f "$GR/index"
+git --git-dir="$GR" --work-tree="$NEW" checkout -q -f deploy
+for d in sessions uploads backups cache; do mkdir -p "storage/$d"; done
+cp -p "$OLD/config.php" "$NEW/config.php"
+for d in uploads backups; do
+  if [ -d "$OLD/storage/$d" ]; then cp -a "$OLD/storage/$d/." "$NEW/storage/$d/"; fi
+done
+chmod 755 storage storage/sessions storage/uploads storage/backups storage/cache
+sed -i "s#'"'"'base_url'"'"' => '"'"'[^'"'"']*'"'"'#'"'"'base_url'"'"' => '"'"'$URL'"'"'#" "$NEW/config.php"
+if grep -q "$URL" "$NEW/config.php"; then echo "BASEURL: ok"; else echo "BASEURL: gagal"; fi
+ARC="$HOME/arsip/$(basename "$OLD")-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$ARC"
+for f in "$OLD"/*; do mv "$f" "$ARC"/; done
+printf "RewriteEngine On\nRewriteRule ^(.*)\$ %s/\$1 [R=301,L]\n" "$URL" > "$OLD/.htaccess"
+echo "ARSIP: $ARC"
+echo "VERSI: $(git --git-dir="$GR" log -1 --format="%h - %s - %cd" --date=format:"%d %b %Y %H:%M" deploy)"
+echo "CONFIG: ada"
 '
 
 # Status: versi yang terpasang. $1 folder, $2 repo.
@@ -193,6 +228,41 @@ cmd_deploy() {
   ship
 }
 
+cmd_pindah() {
+  load_env
+  check_branch
+  local old="$DEPLOY_PATH"
+  local host="${APP_URL#*://}"; host="${host%%/*}"
+  local sub="${host%%.*}" parent="${host#*.}"
+  say "Mencari folder subdomain ${host} di server..."
+  local out
+  out=$(remote "$old" "$SERVER_REPO" "domains/${host}/public_html" "domains/${parent}/public_html/${sub}" "public_html/${sub}" <<<"$REMOTE_PREPARE") \
+    || die "Tidak bisa masuk SSH ke server. Cek data di ${ENV_FILE}."
+  local new; new=$(printf '%s\n' "$out" | sed -n 's/^CAND: //p' | head -n 1)
+  [ -n "$new" ] || die "Folder untuk ${host} belum ada. Buat subdomainnya dulu di hPanel > Domains > Subdomains."
+  [ "$new" != "$old" ] || die "Aplikasi sudah berada di ${new}. Cukup jalankan ./deploy.sh"
+  echo
+  echo "  Dari : ${old}"
+  echo "  Ke   : ${new}  (${APP_URL})"
+  echo "  config.php & unggahan ikut dipindah. Database tidak diubah."
+  echo "  Folder lama diarsipkan ke ~/arsip, lalu alamat lama dialihkan ke ${APP_URL}."
+  local yn; read -r -p "Lanjutkan? [y/N] " yn
+  case "$yn" in y|Y) ;; *) die "Dibatalkan." ;; esac
+
+  say "Mengirim kode ke server..."
+  local sshcmd
+  sshcmd="ssh -p $DEPLOY_PORT -o ServerAliveInterval=20 -o ConnectTimeout=15 -o ControlMaster=auto -o ControlPersist=120 -o ControlPath=$(printf '%q' "$CTL_PATH")"
+  GIT_SSH_COMMAND="$sshcmd" git -c push.negotiate=false push -q -f "$DEPLOY_USER@$DEPLOY_HOST:$SERVER_REPO" "HEAD:refs/heads/deploy" \
+    || die "Gagal mengirim kode ke server."
+  say "Memindahkan aplikasi..."
+  out=$(remote "$old" "$new" "$SERVER_REPO" "$APP_URL" <<<"$REMOTE_MOVE") || die "Gagal memindahkan. Folder lama belum diubah jika config.php tidak ditemukan; cek pesan di atas."
+  DEPLOY_PATH="$new"; save_env
+  printf '%s\n' "$out" | grep -q '^BASEURL: ok' || warn "base_url di config.php belum terganti. Ubah manual menjadi ${APP_URL}."
+  printf '%s\n' "$out" | sed -n 's/^ARSIP: /    Folder lama diarsipkan di: /p'
+  report "$out"
+  say "Alamat lama sekarang dialihkan ke ${APP_URL}."
+}
+
 cmd_status() {
   load_env
   remote "$DEPLOY_PATH" "$SERVER_REPO" <<<"$REMOTE_STATUS"
@@ -210,6 +280,7 @@ case "${1:-deploy}" in
   deploy) cmd_deploy ;;
   status) cmd_status ;;
   ssh)    cmd_ssh ;;
-  -h|--help|help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "Perintah tidak dikenal: $1 (pakai: setup, status, ssh, atau tanpa argumen)" ;;
+  pindah) cmd_pindah ;;
+  -h|--help|help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "Perintah tidak dikenal: $1 (pakai: setup, status, ssh, pindah, atau tanpa argumen)" ;;
 esac

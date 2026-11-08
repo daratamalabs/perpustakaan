@@ -40,7 +40,7 @@
           <label class="field">User database<input class="input" name="db_user" value="<?= e($f['db_user']) ?>" required autocomplete="off"></label>
           <label class="field">Password database<input class="input" type="password" name="db_pass" value="<?= e($f['db_pass']) ?>" autocomplete="new-password"></label>
         </div>
-        <label class="field">Alamat aplikasi<input class="input" name="base_url" value="<?= e($f['base_url']) ?>"><span class="hint">Mis. https://perpustakaan.daratamalabs.com</span></label>
+        <label class="field">Alamat aplikasi<input class="input" name="base_url" value="<?= e($f['base_url']) ?>"><span class="hint">Mis. https://satuperpus.daratamalabs.com</span></label>
       <?php else: ?>
         <div class="alert alert-info"><?= icon('info') ?><span>config.php sudah ada. Tinggal membuat tabel dan akun super admin.</span></div>
       <?php endif; ?>
