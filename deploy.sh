@@ -147,8 +147,10 @@ cmd_deploy() {
   fi
 
   say "Sinkron dengan GitHub…"
-  git pull -q --rebase origin "$BRANCH"
-  git push -q origin "$BRANCH"
+  git pull -q --rebase origin "$BRANCH" || die "Gagal mengambil dari GitHub. Cek koneksi atau login GitHub (gh auth login)."
+  if [ -n "$(git rev-list "origin/$BRANCH..HEAD")" ]; then
+    git push -q origin "$BRANCH" || die "Gagal push ke GitHub. Login dulu dengan: gh auth login (pilih HTTPS), lalu ulangi ./deploy.sh"
+  fi
 
   say "Memperbarui server…"
   local out

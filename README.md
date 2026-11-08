@@ -53,10 +53,12 @@ Kode disimpan di GitHub (`daratamalabs/perpustakaan`). Server Hostinger mengambi
 ### Pemasangan pertama
 
 ```bash
-git clone git@github.com:daratamalabs/perpustakaan.git
+git clone https://github.com/daratamalabs/perpustakaan.git
 cd perpustakaan
 ./deploy.sh setup
 ```
+
+Kalau repo private dan Git meminta login, jalankan `gh auth login` sekali (pilih GitHub.com → HTTPS → login lewat browser), lalu ulangi `git clone`.
 
 `setup` akan:
 1. Menanyakan data SSH, lalu menyimpannya di `.deploy.env` (tidak ikut ke GitHub).
