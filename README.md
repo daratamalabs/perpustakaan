@@ -41,7 +41,7 @@ Paket Hostinger shared hosting yang sama dengan Daratama POS sudah memenuhi semu
 
 ## Cara pasang di Hostinger (deploy.sh)
 
-Kode disimpan di GitHub (`daratamalabs/perpustakaan`). Server Hostinger mengambil kode langsung dari GitHub lewat SSH, jadi setiap pembaruan cukup dengan `./deploy.sh`.
+Kode disimpan di GitHub (`daratamalabs/perpustakaan`). `deploy.sh` dijalankan dari Mac: ia menyinkronkan kode dengan GitHub, lalu mengirimkannya langsung ke server Hostinger lewat SSH. Server tidak butuh akses ke GitHub, jadi tidak ada kunci deploy yang perlu diatur.
 
 ### Persiapan di hPanel (sekali)
 
@@ -61,9 +61,9 @@ cd perpustakaan
 Kalau repo private dan Git meminta login, jalankan `gh auth login` sekali (pilih GitHub.com → HTTPS → login lewat browser), lalu ulangi `git clone`.
 
 `setup` akan:
-1. Menanyakan data SSH, lalu menyimpannya di `.deploy.env` (tidak ikut ke GitHub).
-2. Membuat kunci deploy khusus di server dan menampilkannya. Tambahkan kunci itu di GitHub: repo → *Settings → Deploy keys → Add deploy key*. Jangan centang *Allow write access*.
-3. Memeriksa folder subdomain di server, lalu mengambil kode ke sana. Halaman bawaan Hostinger (`default.php`) ikut dihapus.
+1. Menanyakan data SSH, lalu menyimpannya di `.deploy.env` (tidak ikut ke GitHub). Password SSH cukup dimasukkan sekali per perintah.
+2. Memeriksa folder subdomain di server.
+3. Mengirim kode ke server (repo git di `~/repos/perpustakaan.git`, di luar folder web) dan memasangnya di folder subdomain. Halaman bawaan Hostinger (`default.php`) ikut dihapus.
 
 Jika `https://perpustakaan.daratamalabs.com` menampilkan halaman 404 Hostinger, berarti kode belum ada di folder yang dipakai subdomain. Jalankan `./deploy.sh setup` lagi.
 
@@ -78,12 +78,12 @@ Untuk sekolah berikutnya cukup ulangi langkah 5 dengan alamat lain, misalnya `sm
 ### Pembaruan
 
 ```bash
-./deploy.sh          # commit perubahan (jika ada), push ke GitHub, lalu perbarui server
+./deploy.sh          # commit perubahan (jika ada), sinkron dengan GitHub, lalu kirim ke server
 ./deploy.sh status   # versi yang sedang berjalan di server
 ./deploy.sh ssh      # buka terminal server di folder aplikasi
 ```
 
-Saat deploy, server mengikuti isi GitHub persis. `config.php` dan isi `storage/` (sesi, foto unggahan) tidak pernah tersentuh karena tidak ikut di repo. Jangan mengedit kode langsung di server, karena perubahannya akan tertimpa pada deploy berikutnya.
+Saat deploy, folder aplikasi di server mengikuti isi repo persis: berkas yang dihapus di repo ikut terhapus di server. `config.php` dan isi `storage/` (sesi, foto unggahan) tidak pernah tersentuh karena tidak ikut di repo. Jangan mengedit kode langsung di server, karena perubahannya akan tertimpa pada deploy berikutnya.
 
 > Jika installer tidak bisa menulis `config.php`, ia akan menampilkan isi berkasnya. Buat `config.php` secara manual di folder aplikasi dengan isi tersebut. Contoh format ada di `config.sample.php`.
 
