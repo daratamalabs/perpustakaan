@@ -116,7 +116,7 @@ ship() {
   say "Mengirim kode ke server..."
   local sshcmd
   sshcmd="ssh -p $DEPLOY_PORT -o ServerAliveInterval=20 -o ConnectTimeout=15 -o ControlMaster=auto -o ControlPersist=120 -o ControlPath=$(printf '%q' "$CTL_PATH")"
-  GIT_SSH_COMMAND="$sshcmd" git push -q -f "$DEPLOY_USER@$DEPLOY_HOST:$SERVER_REPO" "HEAD:refs/heads/deploy" \
+  GIT_SSH_COMMAND="$sshcmd" git -c push.negotiate=false push -q -f "$DEPLOY_USER@$DEPLOY_HOST:$SERVER_REPO" "HEAD:refs/heads/deploy" \
     || die "Gagal mengirim kode ke server. Jalankan ./deploy.sh setup dulu."
   local out
   out=$(remote "$DEPLOY_PATH" "$SERVER_REPO" <<<"$REMOTE_INSTALL") || die "Kode terkirim, tapi gagal dipasang di folder ${DEPLOY_PATH}."
